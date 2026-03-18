@@ -3,6 +3,65 @@ import sys
 import subprocess
 import ctypes
 import tempfile
+import shutil
+import urllib.request
+
+
+REPO_URL = "https://github.com/AlberGG01/tecnoy-rrhh.git"
+
+
+def refresh_path():
+    """Recarga PATH del registro de Windows en el proceso actual."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r'SYSTEM\CurrentControlSet\Control\Session Manager\Environment') as k:
+            system_path = winreg.QueryValueEx(k, 'PATH')[0]
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Environment') as k:
+                user_path = winreg.QueryValueEx(k, 'PATH')[0]
+        except FileNotFoundError:
+            user_path = ''
+        os.environ['PATH'] = system_path + ';' + user_path
+    except Exception:
+        pass
+
+
+def ensure_python():
+    print("\n" + "="*60)
+    print("  PRE-REQUISITO: PYTHON")
+    print("="*60)
+    if shutil.which("python") or shutil.which("py"):
+        print("[+] Python ya instalado.")
+        return
+    print("[*] Instalando Python 3.11...")
+    url = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+    installer_path = os.path.join(tempfile.gettempdir(), "python-3.11.9-amd64.exe")
+    urllib.request.urlretrieve(url, installer_path)
+    subprocess.run(
+        [installer_path, "/quiet", "InstallAllUsers=1", "PrependPath=1", "Include_test=0"],
+        check=True
+    )
+    refresh_path()
+    print("[+] Python instalado correctamente.")
+
+
+def ensure_git(install_dir):
+    print("\n" + "="*60)
+    print("  PRE-REQUISITO: GIT")
+    print("="*60)
+    if shutil.which("git"):
+        print("[+] Git ya instalado.")
+        return
+    print("[*] Instalando Git...")
+    url = "https://github.com/git-for-windows/git/releases/download/v2.44.0.windows.1/Git-2.44.0-64-bit.exe"
+    installer_path = os.path.join(tempfile.gettempdir(), "Git-2.44.0-64-bit.exe")
+    urllib.request.urlretrieve(url, installer_path)
+    subprocess.run([installer_path, "/VERYSILENT", "/NORESTART"], check=True)
+    refresh_path()
+    subprocess.run(["git", "init"], cwd=install_dir, check=True)
+    subprocess.run(["git", "remote", "add", "origin", REPO_URL], cwd=install_dir, check=True)
+    print("[+] Git instalado y repositorio vinculado.")
 
 
 def is_admin():
@@ -163,6 +222,9 @@ def main():
         sys.exit(1)
 
     try:
+        ensure_python()
+        ensure_git(install_dir)
+
         # Crear carpetas necesarias si no existen
         for folder in ["NUEVOS_INGRESOS", "logs"]:
             folder_path = os.path.join(install_dir, folder)
