@@ -1,0 +1,14 @@
+.env
+candidates.db
+chroma_db/
+TECNOY-Seleccion RRHH/
+NUEVOS_INGRESOS/
+logs/
+__pycache__/
+*.exe
+*.zip
+*.pyc
+venv/
+build/
+dist/
+.claude/

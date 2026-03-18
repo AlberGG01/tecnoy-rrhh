@@ -1,0 +1,10 @@
+streamlit
+pandas
+chromadb
+openai
+sentence-transformers
+torch
+openpyxl
+pymupdf
+python-docx
+python-dotenv
