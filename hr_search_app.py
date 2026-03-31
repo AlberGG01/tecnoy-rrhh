@@ -180,11 +180,11 @@ def format_fecha_ingreso(fecha_str):
         años = (hoy - ingreso).days / 365.25
         fecha_fmt = ingreso.strftime("%d/%m/%Y")
         if años > 5:
-            return f'<span style="color:#CC0000;font-weight:600;">📅 Ingresado: {fecha_fmt} ⚠️ Perfil antiguo</span>'
+            return f'<span style="color:#CC0000;font-weight:600;">📅 CV Ingresado: {fecha_fmt} ⚠️ Perfil antiguo</span>'
         elif años > 2:
-            return f'<span style="color:#E8500A;font-weight:600;">📅 Ingresado: {fecha_fmt} ⚠️</span>'
+            return f'<span style="color:#E8500A;font-weight:600;">📅 CV Ingresado: {fecha_fmt} ⚠️</span>'
         else:
-            return f'<span style="color:#555555;">📅 Ingresado: {fecha_fmt}</span>'
+            return f'<span style="color:#555555;">📅 CV Ingresado: {fecha_fmt}</span>'
     except Exception:
         return ""
 
@@ -1084,6 +1084,78 @@ with tab4:
         col_x, col_y = st.columns(2)
         col_x.markdown(f"**Último batch:**  \n`{_last_batch_str}`")
         col_y.markdown(f"**CVs pendientes:**  \n`{len(_pending_files)} archivo(s)`")
+
+    # ── Reorganizador de Carpetas ────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 🗂️ Reorganizar Carpetas")
+    st.markdown(
+        "Reclasifica todos los candidatos en la nueva estructura de carpetas usando IA. "
+        "Primero lanza la **vista previa** para revisar los cambios antes de ejecutar."
+    )
+
+    _reorg_script = _app_dir / "reorganizar_carpetas.py"
+    _python_reorg = _app_dir / "venv" / "Scripts" / "python.exe"
+    if not _python_reorg.exists():
+        _python_reorg = Path(sys.executable)
+
+    col_prev, col_exec = st.columns(2)
+
+    with col_prev:
+        if st.button("🔍 Vista previa (sin cambios)", key="btn_reorg_dry"):
+            _reorg_log = ""
+            with st.spinner("Analizando 2.593 candidatos con IA… (puede tardar ~10 min)"):
+                try:
+                    _proc = subprocess.run(
+                        [str(_python_reorg), str(_reorg_script), "--dry-run"],
+                        cwd=str(_app_dir),
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=1800
+                    )
+                    _reorg_log = _proc.stdout or ""
+                    if _proc.stderr:
+                        _reorg_log += "\n--- ERRORES ---\n" + _proc.stderr
+                except subprocess.TimeoutExpired:
+                    _reorg_log = "[!] Tiempo límite superado (30 min)."
+                except Exception as _e:
+                    _reorg_log = f"[!] Error: {_e}"
+            st.session_state["reorg_log_dry"] = _reorg_log
+
+    with col_exec:
+        st.error(
+            "⚠️ **Esta acción moverá los archivos físicos y actualizará la base de datos.** "
+            "Asegúrate de tener una copia de seguridad antes de continuar."
+        )
+        if st.button("🗂️ Reorganizar ahora", type="primary", key="btn_reorg_exec"):
+            _reorg_log = ""
+            with st.spinner("Reorganizando candidatos… (puede tardar hasta 30 min)"):
+                try:
+                    _proc = subprocess.run(
+                        [str(_python_reorg), str(_reorg_script), "--execute"],
+                        cwd=str(_app_dir),
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=1800,
+                        input="SI\n"
+                    )
+                    _reorg_log = _proc.stdout or ""
+                    if _proc.stderr:
+                        _reorg_log += "\n--- ERRORES ---\n" + _proc.stderr
+                except subprocess.TimeoutExpired:
+                    _reorg_log = "[!] Tiempo límite superado (30 min)."
+                except Exception as _e:
+                    _reorg_log = f"[!] Error: {_e}"
+            st.session_state["reorg_log_exec"] = _reorg_log
+
+    if "reorg_log_dry" in st.session_state:
+        st.text_area("📋 Vista previa — plan de reorganización:", value=st.session_state["reorg_log_dry"], height=400, key="ta_reorg_dry")
+
+    if "reorg_log_exec" in st.session_state:
+        st.text_area("📋 Log de reorganización ejecutada:", value=st.session_state["reorg_log_exec"], height=400, key="ta_reorg_exec")
 
 # --- FOOTER ---
 st.markdown("---")
