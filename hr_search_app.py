@@ -169,6 +169,26 @@ def format_list(val):
     except:
         return [val]
 
+def format_fecha_ingreso(fecha_str):
+    """Devuelve HTML con la fecha de ingreso coloreada según antigüedad."""
+    if not fecha_str or str(fecha_str).lower() in ('null', 'none', ''):
+        return ""
+    try:
+        from datetime import date
+        ingreso = date.fromisoformat(str(fecha_str)[:10])
+        hoy = date.today()
+        años = (hoy - ingreso).days / 365.25
+        fecha_fmt = ingreso.strftime("%d/%m/%Y")
+        if años > 5:
+            return f'<span style="color:#CC0000;font-weight:600;">📅 Ingresado: {fecha_fmt} ⚠️ Perfil antiguo</span>'
+        elif años > 2:
+            return f'<span style="color:#E8500A;font-weight:600;">📅 Ingresado: {fecha_fmt} ⚠️</span>'
+        else:
+            return f'<span style="color:#555555;">📅 Ingresado: {fecha_fmt}</span>'
+    except Exception:
+        return ""
+
+
 def get_folders():
     base = _APP_DIR / "TECNOY-Seleccion RRHH" / "01_ACTIVOS"
     if not base.exists(): return []
@@ -230,7 +250,7 @@ def hybrid_search(query, folders, seniorities, min_experience):
     collection = chroma.get_collection("candidatos_cv_v2")
     
     # 1. Sqlite Keyword Search
-    sql = "SELECT id, nombre, email, telefono, linkedin, carpeta_origen, archivo_origen, ruta_completa, nivel_seniority, años_experiencia_total, skills_tecnicas, resumen_profesional FROM candidatos WHERE 1=1"
+    sql = "SELECT id, nombre, email, telefono, linkedin, carpeta_origen, archivo_origen, ruta_completa, nivel_seniority, años_experiencia_total, skills_tecnicas, resumen_profesional, fecha_ingreso FROM candidatos WHERE 1=1"
     params = []
     
     if query:
@@ -598,6 +618,12 @@ with col_f2:
     sel_seniority = st.multiselect("Nivel Seniority", options=["becario", "junior", "mid", "senior", "lead"])
 with col_f3:
     min_exp = st.slider("Años experiencia mínimos", 0, 20, 0)
+
+col_f4, col_f5 = st.columns([1, 2])
+with col_f4:
+    _antiguedad_opts = {"Todos": 0, "Máx. 1 año": 1, "Máx. 2 años": 2, "Máx. 5 años": 5}
+    _antiguedad_label = st.selectbox("Antigüedad máxima del CV", options=list(_antiguedad_opts.keys()))
+    max_antiguedad = _antiguedad_opts[_antiguedad_label]
     
 st.markdown("---")
 
@@ -618,6 +644,10 @@ with tab1:
             
     if 'keyword_results' in st.session_state:
         results = st.session_state['keyword_results']
+        if max_antiguedad > 0 and 'fecha_ingreso' in results.columns:
+            from datetime import date as _date
+            cutoff = _date.today().replace(year=_date.today().year - max_antiguedad).isoformat()
+            results = results[results['fecha_ingreso'].fillna('9999-12-31') >= cutoff]
         if results.empty:
             st.info("No se han encontrado candidatos con esos criterios. Prueba a ampliar los filtros.")
         else:
@@ -653,11 +683,14 @@ with tab1:
                             <div style="margin-bottom: 0.5rem;">
                                 {" ".join([f'<span class="skill-match">{s}</span>' if search_query.lower() in s.lower() else f'<span class="skill-missing">{s}</span>' for s in skills[:15]])}
                             </div>
-                            <div style="font-size: 0.9rem; color: #2D2D2D; margin-bottom: 1rem;">
+                            <div style="font-size: 0.9rem; color: #2D2D2D; margin-bottom: 0.4rem;">
                                 📍 <b>Carpeta:</b> {row['carpeta_origen']} | 📧 {row['email'] or 'N/D'} | 📞 {row['telefono'] or 'N/D'}
                             </div>
+                            <div style="font-size: 0.85rem; margin-bottom: 1rem;">
+                                {format_fecha_ingreso(row.get('fecha_ingreso'))}
+                            </div>
                     """, unsafe_allow_html=True)
-                    
+
                     if st.button(f"📄 Abrir PDF/Word Original", key=f"btn_kw_{row['id']}"):
                         try: os.startfile(str(ruta_cv))
                         except Exception as e: st.error(f"Error abriendo documento local: {e}")
@@ -696,6 +729,10 @@ with tab2:
 
     if 'ranking_results' in st.session_state:
         ranking = st.session_state['ranking_results']
+        if max_antiguedad > 0 and 'fecha_ingreso' in ranking.columns:
+            from datetime import date as _date
+            cutoff = _date.today().replace(year=_date.today().year - max_antiguedad).isoformat()
+            ranking = ranking[ranking['fecha_ingreso'].fillna('9999-12-31') >= cutoff]
         if len(ranking) == 0:
             st.warning("No hay candidatos que coincidan con la oferta y los filtros aplicados.")
         else:
@@ -744,13 +781,16 @@ with tab2:
                             <div style="margin-bottom: 0.5rem; color: {'#E8500A' if row['años_experiencia_total'] < row.get('offer_exp_req', 0) else '#2D2D2D'}; font-weight: 500;">
                                 <b>Seniority:</b> {row['nivel_seniority']} | <b>Experiencia:</b> {row['años_experiencia_total']} años (Requerida: {row.get('offer_exp_req', 0)} años)
                             </div>
-                            <div style="font-size: 0.9rem; color: #2D2D2D; margin-top: 0.5rem; margin-bottom: 1rem;">
+                            <div style="font-size: 0.9rem; color: #2D2D2D; margin-top: 0.5rem; margin-bottom: 0.4rem;">
                                 {" | ".join(filter(None, [
                                     f"🔗 <a href='{row['linkedin']}' target='_blank'>LinkedIn</a>" if row.get('linkedin') and str(row.get('linkedin')).lower() not in ['null', 'n/d', 'none'] else "",
                                     f"📧 {row['email']}" if row.get('email') and str(row.get('email')).lower() not in ['null', 'n/d', 'none'] else "",
                                     f"📞 {row['telefono']}" if row.get('telefono') and str(row.get('telefono')).lower() not in ['null', 'n/d', 'none'] else "",
                                     f"📍 {row['carpeta_origen']}"
                                 ]))}
+                            </div>
+                            <div style="font-size: 0.85rem; margin-bottom: 1rem;">
+                                {format_fecha_ingreso(row.get('fecha_ingreso'))}
                             </div>
                     """, unsafe_allow_html=True)
                     

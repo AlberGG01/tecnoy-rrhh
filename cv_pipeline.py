@@ -319,8 +319,8 @@ def save_to_db(data, raw_text, file_path, conn, collection):
             skills_blandas, certificaciones, idiomas, educacion, experiencia_laboral,
             sector_experiencia, tipo_contrato_preferido, logros_destacados,
             puntos_fuertes, nivel_extraccion, confianza_extraccion, carpeta_origen,
-            archivo_origen, ruta_completa, fecha_indexacion
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
+            archivo_origen, ruta_completa, fecha_indexacion, fecha_ingreso
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', (
             data.get("tipo_documento"), data.get("nombre"), data.get("email"),
             data.get("telefono"), data.get("linkedin"), data.get("github"), data.get("portfolio_web"),
             json.dumps(data.get("ubicacion")), data.get("titulo_profesional"),
@@ -333,7 +333,8 @@ def save_to_db(data, raw_text, file_path, conn, collection):
             json.dumps(data.get("logros_destacados")), json.dumps(data.get("puntos_fuertes")),
             data.get("nivel_extraccion"), data.get("confianza_extraccion"),
             str(file_path.parent.name), file_path.name, str(file_path),
-            datetime.now().isoformat()
+            datetime.now().isoformat(),
+            datetime.now().strftime("%Y-%m-%d")
         ))
         row_id = c.lastrowid
         conn.commit()
