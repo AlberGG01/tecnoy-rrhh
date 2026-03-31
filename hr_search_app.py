@@ -1124,13 +1124,14 @@ with tab4:
             st.session_state["reorg_log_dry"] = _reorg_log
 
     with col_exec:
-        st.error(
-            "⚠️ **Esta acción moverá los archivos físicos y actualizará la base de datos.** "
-            "Asegúrate de tener una copia de seguridad antes de continuar."
+        st.info(
+            "ℹ️ Este proceso reclasificará automáticamente todos los candidatos en sus carpetas correctas. "
+            "El proceso puede tardar entre 30-60 minutos. "
+            "No cierres la aplicación mientras se ejecuta."
         )
         if st.button("🗂️ Reorganizar ahora", type="primary", key="btn_reorg_exec"):
             _reorg_log = ""
-            with st.spinner("Reorganizando candidatos… (puede tardar hasta 30 min)"):
+            with st.spinner("Reorganizando candidatos… (puede tardar entre 30-60 min)"):
                 try:
                     _proc = subprocess.run(
                         [str(_python_reorg), str(_reorg_script), "--execute"],
@@ -1139,17 +1140,43 @@ with tab4:
                         text=True,
                         encoding="utf-8",
                         errors="replace",
-                        timeout=1800,
+                        timeout=7200,
                         input="SI\n"
                     )
                     _reorg_log = _proc.stdout or ""
                     if _proc.stderr:
                         _reorg_log += "\n--- ERRORES ---\n" + _proc.stderr
                 except subprocess.TimeoutExpired:
-                    _reorg_log = "[!] Tiempo límite superado (30 min)."
+                    _reorg_log = "[!] Tiempo límite superado (2 horas)."
                 except Exception as _e:
                     _reorg_log = f"[!] Error: {_e}"
             st.session_state["reorg_log_exec"] = _reorg_log
+
+    st.markdown("")
+    if st.button("📊 Ver estado actual", key="btn_reorg_status"):
+        _conn_st = get_db_connection()
+        _cur_st = _conn_st.cursor()
+        _cur_st.execute("SELECT COUNT(*) FROM candidatos")
+        _total = _cur_st.fetchone()[0]
+        _cur_st.execute("SELECT COUNT(*) FROM candidatos WHERE carpeta_origen LIKE '%\\_%' ESCAPE '\\'")
+        _nuevo_fmt = _cur_st.fetchone()[0]
+        _antiguo_fmt = _total - _nuevo_fmt
+        st.markdown(
+            f"**Total candidatos en BD:** {_total}  \n"
+            f"**Formato nuevo** (ej. Backend_Java_Senior): {_nuevo_fmt}  \n"
+            f"**Formato antiguo** (ej. java j2ee, big data python): {_antiguo_fmt}"
+        )
+        if "reorg_log_exec" in st.session_state:
+            _errores_estado = [
+                ln for ln in st.session_state["reorg_log_exec"].splitlines()
+                if ln.strip().startswith("[!]") or "ERROR" in ln.upper()
+            ]
+            if _errores_estado:
+                st.warning("**Errores del último proceso de reorganización:**\n\n" + "\n".join(_errores_estado))
+            else:
+                st.success("Sin errores registrados en el último proceso de reorganización.")
+        else:
+            st.caption("No hay log de reorganización en esta sesión.")
 
     if "reorg_log_dry" in st.session_state:
         st.text_area("📋 Vista previa — plan de reorganización:", value=st.session_state["reorg_log_dry"], height=400, key="ta_reorg_dry")
