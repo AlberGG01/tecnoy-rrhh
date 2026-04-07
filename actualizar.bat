@@ -1,7 +1,8 @@
 @echo off
 echo Actualizando aplicacion...
 git config --global --add safe.directory "%~dp0"
-git -C "%~dp0" pull origin main
+git -C "%~dp0" fetch origin
+git -C "%~dp0" reset --hard origin/main
 echo Instalando dependencias nuevas...
 venv\Scripts\pip install -r requirements.txt -q
 echo Actualizacion completada. Reinicia la aplicacion.
