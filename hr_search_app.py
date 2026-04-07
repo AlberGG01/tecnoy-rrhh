@@ -972,6 +972,7 @@ with tab3:
 
 with tab4:
     st.markdown("### ⚙️ Mantenimiento del Sistema")
+    st.info("Version: 2026-04-07-v2")
     st.markdown("---")
 
     _app_dir = Path(__file__).parent
