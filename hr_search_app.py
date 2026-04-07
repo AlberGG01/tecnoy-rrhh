@@ -1043,47 +1043,50 @@ with tab4:
 
     # ── Columna derecha: Estadísticas ────────────────────────────────────────
     with col_stats:
-        st.markdown("#### 📊 Estadísticas del Sistema")
+        try:
+            st.markdown("#### 📊 Estadísticas del Sistema")
 
-        _db_conn = get_db_connection()
+            _db_conn = get_db_connection()
 
-        # Total candidatos
-        _total = pd.read_sql_query("SELECT COUNT(*) as n FROM candidatos", _db_conn).iloc[0]['n']
-        st.metric("Total candidatos en base de datos", _total)
+            # Total candidatos
+            _total = pd.read_sql_query("SELECT COUNT(*) as n FROM candidatos", _db_conn).iloc[0]['n']
+            st.metric("Total candidatos en base de datos", _total)
 
-        st.markdown("")
+            st.markdown("")
 
-        # Distribución por carpeta/especialidad
-        _df_dist = pd.read_sql_query(
-            """SELECT carpeta_origen AS Especialidad,
-                      COUNT(*) AS Candidatos
-               FROM candidatos
-               GROUP BY carpeta_origen
-               ORDER BY Candidatos DESC""",
-            _db_conn
-        )
-        st.markdown("**Distribución por especialidad:**")
-        st.dataframe(_df_dist, use_container_width=True, hide_index=True)
+            # Distribución por carpeta/especialidad
+            _df_dist = pd.read_sql_query(
+                """SELECT carpeta_origen AS Especialidad,
+                          COUNT(*) AS Candidatos
+                   FROM candidatos
+                   GROUP BY carpeta_origen
+                   ORDER BY Candidatos DESC""",
+                _db_conn
+            )
+            st.markdown("**Distribución por especialidad:**")
+            st.dataframe(_df_dist, use_container_width=True, hide_index=True)
 
-        st.markdown("")
+            st.markdown("")
 
-        # Fecha del último procesamiento batch (por el log más reciente)
-        _logs_dir = _app_dir / "logs"
-        _last_batch_str = "Sin registros"
-        if _logs_dir.exists():
-            _log_files = sorted(_logs_dir.glob("Informe_Batch_*.txt"), reverse=True)
-            if _log_files:
-                # El nombre tiene formato Informe_Batch_YYYYMMDD_HHMMSS.txt
-                _raw = _log_files[0].stem.replace("Informe_Batch_", "")
-                try:
-                    _dt = datetime.datetime.strptime(_raw, "%Y%m%d_%H%M%S")
-                    _last_batch_str = _dt.strftime("%d/%m/%Y a las %H:%M")
-                except Exception:
-                    _last_batch_str = _raw
+            # Fecha del último procesamiento batch (por el log más reciente)
+            _logs_dir = _app_dir / "logs"
+            _last_batch_str = "Sin registros"
+            if _logs_dir.exists():
+                _log_files = sorted(_logs_dir.glob("Informe_Batch_*.txt"), reverse=True)
+                if _log_files:
+                    # El nombre tiene formato Informe_Batch_YYYYMMDD_HHMMSS.txt
+                    _raw = _log_files[0].stem.replace("Informe_Batch_", "")
+                    try:
+                        _dt = datetime.datetime.strptime(_raw, "%Y%m%d_%H%M%S")
+                        _last_batch_str = _dt.strftime("%d/%m/%Y a las %H:%M")
+                    except Exception:
+                        _last_batch_str = _raw
 
-        col_x, col_y = st.columns(2)
-        col_x.markdown(f"**Último batch:**  \n`{_last_batch_str}`")
-        col_y.markdown(f"**CVs pendientes:**  \n`{len(_pending_files)} archivo(s)`")
+            col_x, col_y = st.columns(2)
+            col_x.markdown(f"**Último batch:**  \n`{_last_batch_str}`")
+            col_y.markdown(f"**CVs pendientes:**  \n`{len(_pending_files)} archivo(s)`")
+        except Exception as _stats_err:
+            st.warning(f"No se pudieron cargar las estadísticas: {_stats_err}")
 
     # ── Reorganizador de Carpetas ────────────────────────────────────────────
     st.markdown("---")
