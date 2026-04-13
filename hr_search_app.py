@@ -1061,10 +1061,50 @@ with tab4:
             _count_after = pd.read_sql_query("SELECT COUNT(*) as n FROM candidatos", _db_conn).iloc[0]['n']
             _nuevos = _count_after - _count_before
 
+            # Parsear duplicados del log antes de mostrarlo
+            _duplicados = []
+            _log_clean_lines = []
+            for _line in _log_output.splitlines():
+                if _line.startswith("[DUPLICADO_JSON] "):
+                    try:
+                        _dup = json.loads(_line[len("[DUPLICADO_JSON] "):])
+                        _duplicados.append(_dup)
+                    except Exception:
+                        _log_clean_lines.append(_line)
+                else:
+                    _log_clean_lines.append(_line)
+            _log_output = "\n".join(_log_clean_lines)
+
             col_a, col_b, col_c = st.columns(3)
             col_a.metric("CVs encontrados", len(_pending_files))
             col_b.metric("Candidatos antes", _count_before)
             col_c.metric("Candidatos ahora", _count_after, delta=f"+{_nuevos}" if _nuevos > 0 else str(_nuevos))
+
+            # Mostrar alertas de duplicados
+            if _duplicados:
+                st.warning(f"⚠️ **{len(_duplicados)} CV(s) no añadido(s) porque el candidato ya existe en la base de datos:**")
+                for _dup in _duplicados:
+                    _app_dir_dup = Path(__file__).parent
+                    _ruta_existente = resolve_cv_path(
+                        _app_dir_dup,
+                        _dup.get("existente_ruta", ""),
+                        _dup.get("existente_archivo", "")
+                    )
+                    with st.container():
+                        st.markdown(f"""
+                        <div style="background:#FFF3CD;border-left:4px solid #E8500A;padding:0.8rem 1rem;border-radius:6px;margin-bottom:0.5rem;">
+                            <b>📄 Archivo subido:</b> {_dup.get('nuevo_archivo','')}<br>
+                            <b>👤 Candidato identificado:</b> {_dup.get('candidato_nombre','')}<br>
+                            <b>✅ Ya existe como:</b> {_dup.get('existente_nombre','')}
+                            &nbsp;·&nbsp; <span style="color:#666;font-size:0.85rem;">archivo: {_dup.get('existente_archivo','')}</span><br>
+                            <b>Motivo:</b> coincidencia por <i>{_dup.get('razon','')}</i>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if st.button(f"📂 Abrir CV existente — {_dup.get('existente_nombre','')}", key=f"btn_dup_{_dup.get('existente_archivo','')}"):
+                            try:
+                                os.startfile(str(_ruta_existente))
+                            except Exception as _e:
+                                st.error(f"Error abriendo documento: {_e}")
 
             st.text_area("📋 Log del procesamiento:", value=_log_output, height=300)
 

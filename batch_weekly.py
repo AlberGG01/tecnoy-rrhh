@@ -101,6 +101,42 @@ def clean_name(name):
     if not name or name.lower() == 'null': return None
     return re.sub(r'\s+', ' ', name).strip()
 
+def check_duplicate(nombre, email):
+    """Busca en la BD si ya existe un candidato con el mismo nombre o email.
+    Devuelve (True, dict_existente) o (False, None)."""
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=30)
+        c = conn.cursor()
+        if nombre:
+            nombre_norm = ' '.join(nombre.strip().lower().split())
+            c.execute(
+                "SELECT id, nombre, archivo_origen, ruta_completa FROM candidatos "
+                "WHERE LOWER(TRIM(nombre)) = ? LIMIT 1",
+                (nombre_norm,)
+            )
+            row = c.fetchone()
+            if row:
+                conn.close()
+                return True, {"id": row[0], "nombre": row[1],
+                              "archivo_origen": row[2], "ruta_completa": row[3],
+                              "razon": "nombre"}
+        if email and str(email).lower() not in ('null', 'none', ''):
+            c.execute(
+                "SELECT id, nombre, archivo_origen, ruta_completa FROM candidatos "
+                "WHERE LOWER(TRIM(email)) = ? LIMIT 1",
+                (email.strip().lower(),)
+            )
+            row = c.fetchone()
+            if row:
+                conn.close()
+                return True, {"id": row[0], "nombre": row[1],
+                              "archivo_origen": row[2], "ruta_completa": row[3],
+                              "razon": "email"}
+        conn.close()
+    except Exception:
+        pass
+    return False, None
+
 def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = LOG_DIR / f"Informe_Batch_{timestamp}.txt"
@@ -149,6 +185,7 @@ def main():
             "cvs_reales": 0,
             "administrativos_ignorados": 0,
             "nuevos_anadidos": 0,
+            "duplicados": 0,
             "fallos_extraccion": 0
         }
         
@@ -194,8 +231,30 @@ def main():
 
             if "error" not in data:
                 extracted_name = clean_name(data.get('nombre', ''))
-                new_filename = get_new_filename(filename, extracted_name)
+                extracted_email = data.get('email', '')
 
+                # Comprobar duplicado por nombre o email antes de insertar
+                is_dup, existing = check_duplicate(extracted_name, extracted_email)
+                if is_dup:
+                    stats["duplicados"] += 1
+                    dup_info = json.dumps({
+                        "nuevo_archivo": filename,
+                        "candidato_nombre": extracted_name or "Desconocido",
+                        "existente_archivo": existing.get("archivo_origen", ""),
+                        "existente_ruta": existing.get("ruta_completa", ""),
+                        "existente_nombre": existing.get("nombre", ""),
+                        "razon": existing.get("razon", "nombre")
+                    }, ensure_ascii=False)
+                    log_print(f"  [DUPLICADO] Candidato ya existe en la BD (por {existing.get('razon')}): {existing.get('nombre')}")
+                    log_print(f"[DUPLICADO_JSON] {dup_info}")
+                    # Mover el archivo a 01_ACTIVOS para limpiar NUEVOS_INGRESOS
+                    try:
+                        shutil.move(str(file_path), str(ACTIVOS_DIR / filename))
+                    except Exception:
+                        pass
+                    continue
+
+                new_filename = get_new_filename(filename, extracted_name)
                 skills = data.get('skills_tecnicas', [])
                 seniority = data.get('nivel_seniority', '')
                 folder_str = get_proposed_folder(skills, seniority)
@@ -228,6 +287,7 @@ def main():
         log_print(f"Documentos administrativos ignorados: {stats['administrativos_ignorados']}")
         log_print(f"Currículums reales identificados:     {stats['cvs_reales']}")
         log_print(f"Nuevos CVs extraídos e indexados:     {stats['nuevos_anadidos']}")
+        log_print(f"Duplicados detectados (no añadidos):  {stats['duplicados']}")
         log_print(f"Fallos de extracción/indexación:      {stats['fallos_extraccion']}")
         log_print(f"==================================================\n")
 
