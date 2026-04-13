@@ -109,7 +109,8 @@ st.markdown(f"""
 # --- CLIENTES Y RECURSOS ---
 @st.cache_resource
 def get_db_connection():
-    conn = sqlite3.connect(str(_APP_DIR / "candidates.db"), check_same_thread=False)
+    conn = sqlite3.connect(str(_APP_DIR / "candidates.db"), check_same_thread=False, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 def get_chroma_client():
@@ -188,6 +189,33 @@ def format_fecha_ingreso(fecha_str):
     except Exception:
         return ""
 
+
+def resolve_cv_path(app_dir: Path, ruta_completa: str, archivo_origen: str) -> Path:
+    """Devuelve la ruta real del CV. Si la ruta en BD no existe, busca por nombre de fichero
+    en TECNOY-Seleccion RRHH/01_ACTIVOS/ y actualiza la BD si lo encuentra."""
+    ruta = app_dir / str(ruta_completa) if ruta_completa else None
+    if ruta and ruta.exists():
+        return ruta
+    # Fallback: buscar por nombre de fichero en 01_ACTIVOS
+    if archivo_origen:
+        activos = app_dir / "TECNOY-Seleccion RRHH" / "01_ACTIVOS"
+        if activos.exists():
+            found = list(activos.rglob(archivo_origen))
+            if found:
+                nueva = found[0]
+                # Actualizar ruta_completa en BD para próximas veces
+                try:
+                    db = get_db_connection()
+                    nueva_rel = str(nueva.relative_to(app_dir))
+                    db.execute(
+                        "UPDATE candidatos SET ruta_completa=? WHERE archivo_origen=? AND ruta_completa=?",
+                        (nueva_rel, archivo_origen, ruta_completa)
+                    )
+                    db.commit()
+                except Exception:
+                    pass
+                return nueva
+    return ruta  # Devuelve la ruta original aunque no exista (para que el error sea descriptivo)
 
 def get_folders():
     base = _APP_DIR / "TECNOY-Seleccion RRHH" / "01_ACTIVOS"
@@ -664,10 +692,9 @@ with tab1:
             
             for _, row in results.iterrows():
                 skills = format_list(row['skills_tecnicas'])
-                
-                # Usar la ruta absoluta exacta alojada en la BD para evitar problemas con subcarpetas
+
                 app_dir = Path(__file__).parent
-                ruta_cv = app_dir / str(row['ruta_completa'])
+                ruta_cv = resolve_cv_path(app_dir, row.get('ruta_completa'), row.get('archivo_origen'))
                 url_cv = f"file:///{str(ruta_cv).replace(chr(92), '/')}"
                 
                 with st.container():
@@ -757,11 +784,10 @@ with tab2:
                 if row.get('skill_exp_text'):
                     skills_desc += f"<br><span style='font-size: 0.85rem; color: #666666;'><i>Experiencia extraída: {row['skill_exp_text']}</i></span>"
                 
-                # Usar la ruta absoluta exacta alojada en la BD para evitar problemas con subcarpetas
                 app_dir = Path(__file__).parent
-                ruta_cv = app_dir / str(row['ruta_completa'])
+                ruta_cv = resolve_cv_path(app_dir, row.get('ruta_completa'), row.get('archivo_origen'))
                 url_cv = f"file:///{str(ruta_cv).replace(chr(92), '/')}"
-                
+
                 with st.container():
                     st.markdown(f"""
                         <div class="candidato-card">

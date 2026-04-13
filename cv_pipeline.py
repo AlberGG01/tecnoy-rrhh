@@ -116,7 +116,8 @@ Reglas de extracción:
 
 # --- DATABASE SETUP ---
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS candidatos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,9 +149,15 @@ def init_db():
       carpeta_origen TEXT,
       archivo_origen TEXT,
       ruta_completa TEXT,
-      fecha_indexacion TEXT
+      fecha_indexacion TEXT,
+      fecha_ingreso TEXT
     )''')
     conn.commit()
+    # Migración: añadir fecha_ingreso si la tabla existe pero le falta la columna
+    existing_cols = {row[1] for row in c.execute("PRAGMA table_info(candidatos)")}
+    if 'fecha_ingreso' not in existing_cols:
+        c.execute("ALTER TABLE candidatos ADD COLUMN fecha_ingreso TEXT")
+        conn.commit()
     return conn
 
 def get_chroma_collection():

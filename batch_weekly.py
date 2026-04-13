@@ -18,11 +18,12 @@ if str(BASE_DIR) not in sys.path:
 
 # Importaciones locales
 from cv_pipeline import (
-    process_single_file_with_cost, 
-    client, 
-    extract_raw_text_pdf, 
+    process_single_file_with_cost,
+    client,
+    extract_raw_text_pdf,
     docx_to_text,
-    save_to_db
+    save_to_db,
+    init_db
 )
 
 # Configuración de rutas relativas
@@ -89,7 +90,7 @@ def get_new_filename(original, name):
     return f"{safe_name}{ext}"
 
 def insert_into_db(data, raw_text, db_path, chroma_dir, target_path, folder_str, new_filename):
-    conn = sqlite3.connect(db_path)
+    conn = init_db()  # garantiza schema actualizado + WAL mode
     client = chromadb.PersistentClient(path=str(chroma_dir))
     collection = client.get_collection("candidatos_cv_v2")
     save_to_db(data, raw_text, Path(target_path), conn, collection)
