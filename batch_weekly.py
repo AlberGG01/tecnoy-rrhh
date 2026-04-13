@@ -29,6 +29,7 @@ from cv_pipeline import (
 # Configuración de rutas relativas
 SOURCE_DIR = BASE_DIR / "NUEVOS_INGRESOS"
 ACTIVOS_DIR = BASE_DIR / "TECNOY-Seleccion RRHH" / "01_ACTIVOS"
+DUPLICADOS_DIR = BASE_DIR / "DUPLICADOS"
 DB_PATH = BASE_DIR / "candidates.db"
 CHROMA_DIR = BASE_DIR / "chroma_db"
 LOG_DIR = BASE_DIR / "logs"
@@ -36,6 +37,7 @@ LOG_DIR = BASE_DIR / "logs"
 # Asegurar que los directorios existen
 SOURCE_DIR.mkdir(parents=True, exist_ok=True)
 ACTIVOS_DIR.mkdir(parents=True, exist_ok=True)
+DUPLICADOS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 def extract_text(file_path: Path):
@@ -247,9 +249,9 @@ def main():
                     }, ensure_ascii=False)
                     log_print(f"  [DUPLICADO] Candidato ya existe en la BD (por {existing.get('razon')}): {existing.get('nombre')}")
                     log_print(f"[DUPLICADO_JSON] {dup_info}")
-                    # Mover el archivo a 01_ACTIVOS para limpiar NUEVOS_INGRESOS
+                    # Mover el archivo a DUPLICADOS para revisión manual
                     try:
-                        shutil.move(str(file_path), str(ACTIVOS_DIR / filename))
+                        shutil.move(str(file_path), str(DUPLICADOS_DIR / filename))
                     except Exception:
                         pass
                     continue
