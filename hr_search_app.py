@@ -1254,6 +1254,79 @@ with tab4:
     if "reorg_log_exec" in st.session_state:
         st.text_area("📋 Log de reorganización ejecutada:", value=st.session_state["reorg_log_exec"], height=400, key="ta_reorg_exec")
 
+    # ── Limpieza de no-CVs ───────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 🗑️ Limpiar Currículums")
+    st.markdown(
+        "Detecta y elimina de la base de datos documentos que **no son CVs** "
+        "(facturas, hojas de coste, contratos, expectativas salariales, etc.). "
+        "Los ficheros se mueven a la carpeta `BASURA/` para revisión manual antes de borrar definitivamente. "
+        "Lanza primero la **vista previa** para ver qué se detectaría."
+    )
+
+    _clean_script = _app_dir / "limpiar_no_cvs.py"
+    _python_clean = _app_dir / "venv" / "Scripts" / "python.exe"
+    if not _python_clean.exists():
+        _python_clean = Path(sys.executable)
+
+    col_clean_dry, col_clean_exec = st.columns(2)
+
+    with col_clean_dry:
+        if st.button("🔍 Vista previa — detectar no-CVs", key="btn_clean_dry"):
+            with st.spinner("Analizando documentos con IA… (puede tardar varios minutos)"):
+                try:
+                    _proc = subprocess.run(
+                        [str(_python_clean), str(_clean_script), "--dry-run"],
+                        cwd=str(_app_dir),
+                        capture_output=True, text=True,
+                        encoding="utf-8", errors="replace",
+                        timeout=3600
+                    )
+                    _clean_log = _proc.stdout or ""
+                    if _proc.stderr:
+                        _clean_log += "\n--- ERRORES ---\n" + _proc.stderr
+                except subprocess.TimeoutExpired:
+                    _clean_log = "[!] Tiempo límite superado (1 hora)."
+                except Exception as _e:
+                    _clean_log = f"[!] Error: {_e}"
+            st.session_state["clean_log_dry"] = _clean_log
+
+    with col_clean_exec:
+        st.warning(
+            "⚠️ La ejecución elimina registros de la BD y mueve ficheros a `BASURA/`. "
+            "Revisa la vista previa antes de ejecutar."
+        )
+        if st.button("🗑️ Ejecutar limpieza ahora", type="primary", key="btn_clean_exec"):
+            with st.spinner("Limpiando no-CVs… (puede tardar varios minutos)"):
+                try:
+                    _proc = subprocess.run(
+                        [str(_python_clean), str(_clean_script), "--execute"],
+                        cwd=str(_app_dir),
+                        capture_output=True, text=True,
+                        encoding="utf-8", errors="replace",
+                        timeout=3600,
+                        input="SI\n"
+                    )
+                    _clean_log = _proc.stdout or ""
+                    if _proc.stderr:
+                        _clean_log += "\n--- ERRORES ---\n" + _proc.stderr
+                except subprocess.TimeoutExpired:
+                    _clean_log = "[!] Tiempo límite superado (1 hora)."
+                except Exception as _e:
+                    _clean_log = f"[!] Error: {_e}"
+            st.session_state["clean_log_exec"] = _clean_log
+
+    if "clean_log_dry" in st.session_state:
+        # Resaltar las líneas NO-CV en el preview
+        _dry_lines = st.session_state["clean_log_dry"].splitlines()
+        _no_cv_count = sum(1 for l in _dry_lines if "[NO-CV]" in l)
+        if _no_cv_count:
+            st.error(f"Se detectaron **{_no_cv_count} documentos no-CV** que serían eliminados.")
+        st.text_area("📋 Vista previa — documentos no-CV detectados:", value=st.session_state["clean_log_dry"], height=400, key="ta_clean_dry")
+
+    if "clean_log_exec" in st.session_state:
+        st.text_area("📋 Log de limpieza ejecutada:", value=st.session_state["clean_log_exec"], height=400, key="ta_clean_exec")
+
 # --- FOOTER ---
 st.markdown("---")
 st.markdown("<div style='text-align: center; color: #666666;'>© 2026 Centro de Recursos Humanos Tecnoy | Inteligencia Artificial Aplicada</div>", unsafe_allow_html=True)
