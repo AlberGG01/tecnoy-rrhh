@@ -190,6 +190,43 @@ def format_fecha_ingreso(fecha_str):
         return ""
 
 
+def delete_candidate(candidate_id: int, ruta_cv: Path):
+    """Elimina un candidato de SQLite, ChromaDB y el fichero físico del CV.
+    Devuelve lista de errores (vacía si todo fue bien)."""
+    errors = []
+
+    # 1. Eliminar de SQLite
+    try:
+        db = get_db_connection()
+        db.execute("DELETE FROM candidatos WHERE id = ?", (candidate_id,))
+        db.commit()
+    except Exception as e:
+        errors.append(f"Error BD: {e}")
+
+    # 2. Eliminar de ChromaDB (IDs almacenados como str(sqlite_id))
+    try:
+        chroma = get_chroma_client()
+        collection = chroma.get_collection("candidatos_cv_v2")
+        collection.delete(ids=[str(candidate_id)])
+    except Exception as e:
+        errors.append(f"Error ChromaDB: {e}")
+
+    # 3. Eliminar fichero físico
+    try:
+        if ruta_cv and ruta_cv.exists():
+            ruta_cv.unlink()
+    except Exception as e:
+        errors.append(f"Error fichero: {e}")
+
+    # 4. Actualizar session_state para que desaparezca de los listados sin relanzar búsqueda
+    for key in ['keyword_results', 'ranking_results']:
+        if key in st.session_state:
+            df = st.session_state[key]
+            st.session_state[key] = df[df['id'] != candidate_id]
+
+    return errors
+
+
 def resolve_cv_path(app_dir: Path, ruta_completa: str, archivo_origen: str) -> Path:
     """Devuelve la ruta real del CV. Si la ruta en BD no existe, busca por nombre de fichero
     en TECNOY-Seleccion RRHH/01_ACTIVOS/ y actualiza la BD si lo encuentra."""
@@ -718,10 +755,32 @@ with tab1:
                             </div>
                     """, unsafe_allow_html=True)
 
-                    if st.button(f"📄 Abrir PDF/Word Original", key=f"btn_kw_{row['id']}"):
-                        try: os.startfile(str(ruta_cv))
-                        except Exception as e: st.error(f"Error abriendo documento local: {e}")
-                            
+                    _col_pdf, _col_del = st.columns([3, 1])
+                    with _col_pdf:
+                        if st.button(f"📄 Abrir PDF/Word Original", key=f"btn_kw_{row['id']}"):
+                            try: os.startfile(str(ruta_cv))
+                            except Exception as e: st.error(f"Error abriendo documento local: {e}")
+                    with _col_del:
+                        _cid = int(row['id'])
+                        if st.session_state.get('pending_delete') == _cid:
+                            st.warning(f"¿Eliminar a **{row['nombre']}**?")
+                            _cc1, _cc2 = st.columns(2)
+                            with _cc1:
+                                if st.button("✅ Sí", key=f"confirm_del_kw_{_cid}"):
+                                    _errs = delete_candidate(_cid, ruta_cv)
+                                    st.session_state.pop('pending_delete', None)
+                                    if _errs:
+                                        st.error(f"Errores al eliminar: {'; '.join(_errs)}")
+                                    st.rerun()
+                            with _cc2:
+                                if st.button("❌ No", key=f"cancel_del_kw_{_cid}"):
+                                    st.session_state.pop('pending_delete', None)
+                                    st.rerun()
+                        else:
+                            if st.button("🗑️ Eliminar", key=f"del_kw_{_cid}"):
+                                st.session_state['pending_delete'] = _cid
+                                st.rerun()
+
                     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab2:
@@ -820,12 +879,34 @@ with tab2:
                             </div>
                     """, unsafe_allow_html=True)
                     
-                    if st.button(f"📄 Abrir PDF/Word Original", key=f"btn_rank_{row['id']}"):
-                        try: os.startfile(str(ruta_cv))
-                        except Exception as e: st.error(f"Error abriendo documento local: {e}")
-                            
+                    _col_pdf_r, _col_del_r = st.columns([3, 1])
+                    with _col_pdf_r:
+                        if st.button(f"📄 Abrir PDF/Word Original", key=f"btn_rank_{row['id']}"):
+                            try: os.startfile(str(ruta_cv))
+                            except Exception as e: st.error(f"Error abriendo documento local: {e}")
+                    with _col_del_r:
+                        _cid_r = int(row['id'])
+                        if st.session_state.get('pending_delete') == _cid_r:
+                            st.warning(f"¿Eliminar a **{row['nombre']}**?")
+                            _rc1, _rc2 = st.columns(2)
+                            with _rc1:
+                                if st.button("✅ Sí", key=f"confirm_del_rank_{_cid_r}"):
+                                    _errs_r = delete_candidate(_cid_r, ruta_cv)
+                                    st.session_state.pop('pending_delete', None)
+                                    if _errs_r:
+                                        st.error(f"Errores al eliminar: {'; '.join(_errs_r)}")
+                                    st.rerun()
+                            with _rc2:
+                                if st.button("❌ No", key=f"cancel_del_rank_{_cid_r}"):
+                                    st.session_state.pop('pending_delete', None)
+                                    st.rerun()
+                        else:
+                            if st.button("🗑️ Eliminar", key=f"del_rank_{_cid_r}"):
+                                st.session_state['pending_delete'] = _cid_r
+                                st.rerun()
+
                     st.markdown("</div>", unsafe_allow_html=True)
-                            
+
 with tab3:
     st.markdown("### Generador Automático de Master Files")
     
