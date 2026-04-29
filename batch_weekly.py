@@ -54,7 +54,14 @@ def is_real_cv(text, filename=""):
     if name_lower.startswith(("mk", "mkf")) or "tecnoy" in name_lower:
         return True
 
+    # Bypass: nombre de fichero contiene indicadores explícitos de CV
+    cv_name_hints = ["curriculum", "-cv.", "_cv.", " cv.", "resume", "hoja-de-vida"]
+    if any(hint in name_lower for hint in cv_name_hints):
+        print(f"    [is_real_cv] Bypass por nombre de fichero: {filename}")
+        return True
+
     if not text or len(text.strip()) < 50:
+        print(f"    [is_real_cv] DESCARTADO - texto insuficiente ({len(text.strip()) if text else 0} chars): {filename}")
         return False
 
     val_prompt = (
@@ -73,9 +80,12 @@ def is_real_cv(text, filename=""):
             messages=[{"role": "user", "content": val_prompt}],
             temperature=0
         )
-        return resp.choices[0].message.content.strip().upper().startswith("SI")
+        result = resp.choices[0].message.content.strip().upper()
+        print(f"    [is_real_cv] GPT respondió '{result[:10]}' para: {filename}")
+        return result.startswith("SI")
     except Exception as e:
-        return False
+        print(f"    [is_real_cv] ERROR API ({e}) - pasando al pipeline: {filename}")
+        return True  # Ante error de API, dejar que el pipeline decida
 
 def get_proposed_folder(skills, seniority):
     if not skills: return "00_VARIOS"
