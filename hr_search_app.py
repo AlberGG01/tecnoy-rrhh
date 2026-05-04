@@ -143,20 +143,36 @@ SKILL_SYNONYMS = {
     'pl/sql': ['plsql'],
     'ms sql': ['sql server', 'mssql'],
     '.net': ['dotnet'],
-    'net core': ['dotnet core']
+    'net core': ['dotnet core'],
+    'tfls': ['tlfs', 'tables listings figures', 'tables figures listings'],
+    'tlfs': ['tfls', 'tables listings figures', 'tables figures listings'],
+    'sas': ['sas base', 'sas macro', 'sas advanced'],
+    'gxp': ['gcp environment', 'gmp', 'glp', 'gcp regulated'],
+    'ema': ['european medicines agency'],
+    'fda': ['food and drug administration']
 }
 
 def expand_skill_variants(skill_str):
     """Devuelve una lista con el skill original y todos sus sinónimos conocidos."""
     s = skill_str.strip().lower()
     variants = [s]
-    # Comprobar si coincide exactamente con el diccionario
+
+    # Descomponer notación parentética: "SAS (Base, Macro, Advanced)" →
+    # también genera "sas", "sas base", "sas macro", "sas advanced", "base", "macro"...
+    paren_match = re.match(r'^(.+?)\s*\((.+)\)$', s)
+    if paren_match:
+        base_part = paren_match.group(1).strip()
+        variants.append(base_part)
+        sub_items = [item.strip() for item in paren_match.group(2).split(',')]
+        for sub in sub_items:
+            if sub:
+                variants.append(sub)
+                variants.append(f"{base_part} {sub}")
+
     if s in SKILL_SYNONYMS:
         variants.extend(SKILL_SYNONYMS[s])
-    # Opcional: si contiene el acrónimo rodeado de espacios o al final/principio
-    # Pero para no complicar en exceso el algoritmo y generar falsos positivos, usamos mach exacto.
     for key, syn_list in SKILL_SYNONYMS.items():
-        if key in s.split():  # si la palabra exacta "pwc" está dentro del string del candidato
+        if key in s.split():
             variants.extend(syn_list)
     return list(set(variants))
 
