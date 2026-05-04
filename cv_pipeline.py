@@ -13,6 +13,20 @@ from docx import Document
 from openai import OpenAI
 from dotenv import load_dotenv
 
+try:
+    from docling.document_converter import DocumentConverter as _DoclingConverter
+    _DOCLING_AVAILABLE = True
+except ImportError:
+    _DOCLING_AVAILABLE = False
+
+_docling_converter = None
+
+def get_docling_converter():
+    global _docling_converter
+    if _DOCLING_AVAILABLE and _docling_converter is None:
+        _docling_converter = _DoclingConverter()
+    return _docling_converter
+
 # Load API Key from .env located next to this script
 BASE_DIR = Path(__file__).parent.resolve()
 load_dotenv(BASE_DIR / ".env")
@@ -245,6 +259,19 @@ def docx_to_text(path):
     except:
         return ""
 
+def extract_text_docling(file_path: Path) -> str:
+    """Extrae texto como Markdown usando Docling.
+    Maneja headers con estilos, text boxes, secciones con color y PDFs escaneados.
+    Retorna string vacío si falla o Docling no está disponible."""
+    try:
+        conv = get_docling_converter()
+        if conv is None:
+            return ""
+        result = conv.convert(str(file_path))
+        return result.document.export_to_markdown()
+    except Exception:
+        return ""
+
 def process_single_file_with_cost(file_path: Path):
     ext = file_path.suffix.lower()
     name = file_path.name
@@ -252,23 +279,29 @@ def process_single_file_with_cost(file_path: Path):
     extracted_text = ""
     is_vision = False
     cost = 0.0
-    
-    if ext == '.pdf':
-        extracted_text = extract_raw_text_pdf(file_path)
-        if not extracted_text.strip():
-            is_vision = True  # Nivel 3: Sin texto absoluto, requiere Visión
-            level = 3
-        elif not check_coherence(extracted_text):
-            is_vision = False # Nivel 2: Texto "sucio" (columnas), probamos con Mini para ahorrar
+
+    # --- Extracción principal: Docling (Markdown estructurado) ---
+    # Captura headers con estilos, text boxes y secciones gráficas que PyMuPDF/python-docx pierden.
+    docling_text = extract_text_docling(file_path)
+    if docling_text and len(docling_text.split()) >= 30:
+        extracted_text = docling_text
+        level = 1
+    else:
+        # Fallback al método original si Docling falla o no está disponible
+        if ext == '.pdf':
+            extracted_text = extract_raw_text_pdf(file_path)
+            if not extracted_text.strip():
+                is_vision = True
+                level = 3
+            elif not check_coherence(extracted_text):
+                level = 2
+            else:
+                level = 1
+        elif ext == '.docx':
+            extracted_text = docx_to_text(file_path)
+            level = 1 if len(extracted_text.split()) >= 50 else 2
+        elif ext == '.doc':
             level = 2
-        else:
-            is_vision = False # Nivel 1: Texto limpio
-            level = 1
-    elif ext == '.docx':
-        extracted_text = docx_to_text(file_path)
-        level = 1 if len(extracted_text.split()) >= 50 else 2
-    elif ext == '.doc':
-        level = 2
 
     try:
         # SOLO usamos Visión si es Nivel 3 (Escaneo real sin texto)

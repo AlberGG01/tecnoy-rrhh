@@ -22,6 +22,7 @@ from cv_pipeline import (
     client,
     extract_raw_text_pdf,
     docx_to_text,
+    extract_text_docling,
     save_to_db,
     init_db
 )
@@ -41,6 +42,11 @@ DUPLICADOS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 def extract_text(file_path: Path):
+    # Docling primero: captura headers con estilos y text boxes
+    text = extract_text_docling(file_path)
+    if text and len(text.split()) >= 30:
+        return text
+    # Fallback original
     ext = file_path.suffix.lower()
     if ext == '.pdf':
         return extract_raw_text_pdf(file_path)
