@@ -126,7 +126,10 @@ Reglas de extracción:
 - email y telefono: BUSCA Y EXTRAE SIEMPRE estos campos del documento si es cv_personal, incluso si el formato es extraño (ej. +34, espacios). NO pongas null a menos que de verdad no existan.
 - Para fichas Tecnoy: email, teléfono, linkedin y github = null
 - NO incluyas carnet de conducir, vehículo, ni datos no IT
-- Los strings "null" conviértelos siempre a null real de Python"""
+- Los strings "null" conviértelos siempre a null real de Python
+- idiomas: SOLO incluye idiomas EXPLÍCITAMENTE mencionados en el CV (ej. "English: C1", "Español nativo"). NO inferir idiomas del idioma en que está escrito el CV ni del origen del candidato. Si no se mencionan idiomas, devuelve [].
+- certificaciones: SOLO incluye certificaciones EXPLÍCITAMENTE mencionadas con nombre y entidad. NO inferir certificaciones de las tecnologías que usa el candidato. Si no se mencionan, devuelve [].
+- educacion: SOLO lo que está escrito en el CV. NO inventar títulos ni centros."""
 
 # --- DATABASE SETUP ---
 def init_db():
