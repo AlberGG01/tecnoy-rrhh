@@ -2,6 +2,7 @@ import os
 import json
 import base64
 import io
+import tempfile
 import fitz  # PyMuPDF
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
@@ -11,6 +12,13 @@ from docx.oxml.ns import qn
 from openai import OpenAI
 from pathlib import Path
 from dotenv import load_dotenv
+
+try:
+    from docling.document_converter import DocumentConverter as _DoclingConverter
+    _docling_cv = _DoclingConverter()
+    _DOCLING_OK = True
+except Exception:
+    _DOCLING_OK = False
 
 load_dotenv(Path(__file__).parent.resolve() / ".env")
 client_openai = OpenAI()
@@ -35,8 +43,28 @@ def extract_text_from_file(file_path: str) -> str:
     return text
 
 def extract_text_from_bytes(file_bytes: bytes, filename: str) -> str:
-    """Extract raw text directly from an in-memory byte stream, bypassing the disk."""
+    """Extrae texto de un stream en memoria. Usa Docling como primer intento
+    (captura headers con estilos y text boxes). Fallback a PyMuPDF/python-docx."""
     ext = filename.lower()
+    if ext.endswith(".doc"):
+        return "ERROR_UNSUPPORTED_DOC"
+
+    # --- Intento 1: Docling (Markdown estructurado) ---
+    if _DOCLING_OK:
+        try:
+            suffix = ".pdf" if ext.endswith(".pdf") else ".docx"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+            result = _docling_cv.convert(tmp_path)
+            os.unlink(tmp_path)
+            md = result.document.export_to_markdown()
+            if md and len(md.split()) >= 30:
+                return md
+        except Exception as e:
+            print(f"Docling fallback: {e}")
+
+    # --- Fallback: PyMuPDF / python-docx ---
     text = ""
     try:
         if ext.endswith(".pdf"):
@@ -49,8 +77,6 @@ def extract_text_from_bytes(file_bytes: bytes, filename: str) -> str:
             paragraphs_text = "\n".join([p.text for p in doc.paragraphs])
             tables_text = "\n".join([p.text for table in doc.tables for row in table.rows for cell in row.cells for p in cell.paragraphs])
             text = paragraphs_text + "\n" + tables_text
-        elif ext.endswith(".doc"):
-            return "ERROR_UNSUPPORTED_DOC"
     except Exception as e:
         print(f"Error extracting memory file: {e}")
         return f"ERROR_CRASH: {str(e)}"
@@ -104,7 +130,7 @@ Estructura JSON exacta requerida:
     "Titulación en Especialidad — Institución (Año)"
   ],
   "idiomas": [
-    "Inglés: Nivel Intermedio",
+    "Inglés: Nivel C1",
     "Español: Nativo"
   ]
 }}
@@ -112,6 +138,8 @@ Estructura JSON exacta requerida:
 REGLAS ESTRICTAS:
 - Si un dato no existe en el CV, usa array vacío [] u objeto vacío {{}}.
 - NUNCA inventes certificaciones, cursos ni conocimientos que no estén EXPLÍCITAMENTE en el CV.
+- idiomas: CRÍTICO — SOLO incluye idiomas que aparezcan LITERALMENTE en el CV con su nivel. NO inferir idiomas del idioma en que está redactado el CV ni del nombre o nacionalidad del candidato. Si el CV no menciona idiomas, devuelve [].
+- formacion_academica: SOLO lo que está escrito. NO inventar títulos ni instituciones.
 - Proyectos en orden cronológico INVERSO (más reciente primero).
 - Tono corporativo y profesional.
 - No incluyas datos personales (DNI, dirección, edad).
