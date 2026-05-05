@@ -129,10 +129,7 @@ Estructura JSON exacta requerida:
   "formacion_academica": [
     "Titulación en Especialidad — Institución (Año)"
   ],
-  "idiomas": [
-    "Inglés: Nivel C1",
-    "Español: Nativo"
-  ]
+  "idiomas": []
 }}
 
 REGLAS ESTRICTAS:
@@ -155,7 +152,7 @@ TEXTO DEL CURRICULUM:
             {"role": "system", "content": "You are a helpful HR data extraction assistant. You only respond in strictly parsable JSON format matching the schema requested."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.1
+        temperature=0
     )
     
     response_text = response.choices[0].message.content.strip()
