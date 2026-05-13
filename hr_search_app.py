@@ -14,7 +14,7 @@ from openai import OpenAI
 from sentence_transformers import CrossEncoder
 import torch
 from dotenv import load_dotenv
-import cv_exporter  # Exportador a Master File Corporativo
+import cv_exporter  # Exportador a MK File Corporativo
 
 _APP_DIR = Path(__file__).parent.resolve()
 load_dotenv(_APP_DIR / ".env")
@@ -924,7 +924,7 @@ with tab2:
                     st.markdown("</div>", unsafe_allow_html=True)
 
 with tab3:
-    st.markdown("### Generador Automático de Master Files")
+    st.markdown("### Generador Automático de MK Files")
     
     modo_gen = st.radio("Elige el modo de procesamiento:", ["📄 Un solo currículum (Carga manual)", "📁 Procesamiento Masivo (Carpeta local)"], horizontal=True)
 
@@ -935,7 +935,7 @@ with tab3:
         
         if uploaded_cv is not None:
             if st.button("🚀 Extraer Datos y Generar MK File", type="primary"):
-                with st.spinner("Leyendo original, extrayendo historial (IA) y maquetando Master File corporativo (aprox 5-10 segs)..."):
+                with st.spinner("Leyendo original, extrayendo historial (IA) y maquetando MK File corporativo (aprox 5-10 segs)..."):
                     file_bytes = uploaded_cv.read()
                     filename = uploaded_cv.name
                     
@@ -973,7 +973,7 @@ with tab3:
                             try:
                                 with open(out_path, "wb") as f:
                                     f.write(docx_bytes.getbuffer())
-                                st.success(f"✅ ¡Master File generado con éxito! Guardado automáticamente en la carpeta local: `{mk_dir.name}/{out_filename}`")
+                                st.success(f"✅ ¡MK File generado con éxito! Guardado automáticamente en la carpeta local: `{mk_dir.name}/{out_filename}`")
                                 
                                 # Opcional manual download
                                 st.download_button(

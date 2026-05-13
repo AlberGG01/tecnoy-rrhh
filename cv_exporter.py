@@ -161,8 +161,21 @@ TEXTO DEL CURRICULUM:
     if response_text.endswith("```"):
         response_text = response_text[:-3]
         
+    LANGUAGE_KEYWORDS = [
+        'english', 'spanish', 'español', 'inglés', 'ingles',
+        'french', 'français', 'german', 'alemán', 'aleman',
+        'italiano', 'italian', 'portuguese', 'portugués',
+        'language', 'idioma', 'nivel', 'c1', 'c2', 'b1', 'b2', 'a1', 'a2',
+        'native', 'nativo', 'fluent', 'fluido', 'intermedio', 'avanzado',
+        'básico', 'basico', 'bilingüe', 'bilingue',
+    ]
+
     try:
-        return json.loads(response_text)
+        parsed = json.loads(response_text)
+        text_lower = raw_text.lower()
+        if not any(kw in text_lower for kw in LANGUAGE_KEYWORDS):
+            parsed['idiomas'] = []
+        return parsed
     except Exception as e:
         print(f"Error parsing JSON from LLM: {e}")
         return None
