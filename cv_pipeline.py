@@ -47,7 +47,7 @@ SYSTEM_PROMPT = """Eres un extractor de datos de currículums experto.
 Analiza el CV y devuelve ÚNICAMENTE un JSON válido con esta estructura exacta:
 
 {
-  "tipo_documento": "cv_personal | ficha_tecnoy",
+  "tipo_documento": "cv_personal | ficha_tecnoy | documento_administrativo",
   "nombre": "",
   "email": "",
   "telefono": "",
@@ -122,7 +122,7 @@ Reglas de extracción:
 - resumen_profesional: máximo 3 líneas relevantes
 - logros_destacados: proyectos importantes, equipos liderados, sistemas construidos desde cero, mejoras
 - puntos_fuertes: dedúcelos del CV aunque no estén explícitos
-- tipo_documento ficha_tecnoy: si tiene logo TECNOY o estructura de Niveles de intervención / Áreas de dominio
+- tipo_documento: "cv_personal" si es un CV o perfil profesional de una persona; "ficha_tecnoy" si tiene logo TECNOY o estructura de Niveles de intervención / Áreas de dominio; "documento_administrativo" si es un contrato, oferta de servicios, formulario LOPD, factura, o cualquier documento que NO describe la trayectoria profesional de un candidato
 - email y telefono: BUSCA Y EXTRAE SIEMPRE estos campos del documento si es cv_personal, incluso si el formato es extraño (ej. +34, espacios). NO pongas null a menos que de verdad no existan.
 - Para fichas Tecnoy: email, teléfono, linkedin y github = null
 - NO incluyas carnet de conducir, vehículo, ni datos no IT

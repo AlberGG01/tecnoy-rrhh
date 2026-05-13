@@ -19,10 +19,6 @@ if str(BASE_DIR) not in sys.path:
 # Importaciones locales
 from cv_pipeline import (
     process_single_file_with_cost,
-    client,
-    extract_raw_text_pdf,
-    docx_to_text,
-    extract_text_docling,
     save_to_db,
     init_db
 )
@@ -41,61 +37,6 @@ ACTIVOS_DIR.mkdir(parents=True, exist_ok=True)
 DUPLICADOS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-def extract_text(file_path: Path):
-    # Docling primero: captura headers con estilos y text boxes
-    text = extract_text_docling(file_path)
-    if text and len(text.split()) >= 30:
-        return text
-    # Fallback original
-    ext = file_path.suffix.lower()
-    if ext == '.pdf':
-        return extract_raw_text_pdf(file_path)
-    elif ext in ['.docx', '.doc']:
-        return docx_to_text(str(file_path))
-    return ""
-
-def is_real_cv(text, filename=""):
-    # Bypass GPT: ficheros MKF/Tecnoy son siempre CVs validos por nombre
-    name_lower = filename.lower()
-    if name_lower.startswith(("mk", "mkf")) or "tecnoy" in name_lower:
-        return True
-
-    # Bypass: nombre de fichero contiene indicadores explícitos de CV.
-    # Normalizar separadores (-, _, espacio, paréntesis, punto) a espacio
-    # para detectar "cv" como palabra independiente: "attached-cv (1).pdf" → "cv" ✓
-    import re as _re
-    name_normalized = _re.sub(r'[^a-z0-9]', ' ', name_lower)
-    cv_word_hints = ["curriculum", "resume", "hoja de vida"]
-    if _re.search(r'\bcv\b', name_normalized) or any(h in name_normalized for h in cv_word_hints):
-        print(f"    [is_real_cv] Bypass por nombre de fichero: {filename}")
-        return True
-
-    if not text or len(text.strip()) < 50:
-        print(f"    [is_real_cv] DESCARTADO - texto insuficiente ({len(text.strip()) if text else 0} chars): {filename}")
-        return False
-
-    val_prompt = (
-        "Determina si el siguiente documento es un Curriculum Vitae (CV) real de un candidato "
-        "a un puesto de trabajo. "
-        "IMPORTANTE: Los documentos cuyo nombre empiece por 'MK', 'MKF' o que contengan 'Tecnoy' "
-        "son fichas corporativas de candidatos y DEBEN considerarse CVs validos, NO documentos administrativos. "
-        "Devuelve SOLO 'SI' si es un curriculum, perfil profesional o ficha corporativa de candidato valida. "
-        "Devuelve SOLO 'NO' si es un documento puramente administrativo (contrato, formulario LOPD, "
-        "oferta de servicios empresariales, documento legal, etc) que no describe la experiencia de una persona.\n\n"
-        f"Texto extraido (parcial):\n{text[:3000]}"
-    )
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": val_prompt}],
-            temperature=0
-        )
-        result = resp.choices[0].message.content.strip().upper()
-        print(f"    [is_real_cv] GPT respondió '{result[:10]}' para: {filename}")
-        return result.startswith("SI")
-    except Exception as e:
-        print(f"    [is_real_cv] ERROR API ({e}) - pasando al pipeline: {filename}")
-        return True  # Ante error de API, dejar que el pipeline decida
 
 def get_proposed_folder(skills, seniority):
     if not skills: return "00_VARIOS"
@@ -229,20 +170,7 @@ def main():
                     log_print(f"[{filename}] YA INDEXADO -> Error al limpiar la ruta: {e}")
                 continue
                 
-            log_print(f"[{filename}] Analizando nuevo candidato...")
-            text = extract_text(file_path)
-            
-            if not is_real_cv(text, filename):
-                log_print(f"  [DESCARTADO] No parece un CV real (documento administrativo).")
-                stats["administrativos_ignorados"] += 1
-                try:
-                    trash_path = ACTIVOS_DIR / filename
-                    shutil.move(str(file_path), str(trash_path))
-                except: pass
-                continue
-
-            stats["cvs_reales"] += 1
-            log_print("  [CV] Es un CV real. Extrayendo datos con IA...")
+            log_print(f"[{filename}] Extrayendo datos con IA...")
 
             try:
                 data, extracted_text, cost = process_single_file_with_cost(file_path)
@@ -250,6 +178,16 @@ def main():
                 log_print(f"  [ERROR] Error critico en pipeline: {e}")
                 stats["fallos_extraccion"] += 1
                 continue
+
+            if data.get("tipo_documento") == "documento_administrativo":
+                log_print(f"  [DESCARTADO] Documento administrativo detectado por IA (no es un CV).")
+                stats["administrativos_ignorados"] += 1
+                try:
+                    shutil.move(str(file_path), str(ACTIVOS_DIR / filename))
+                except: pass
+                continue
+
+            stats["cvs_reales"] += 1
 
             if "error" not in data:
                 extracted_name = clean_name(data.get('nombre', ''))
