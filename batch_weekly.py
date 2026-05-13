@@ -60,9 +60,13 @@ def is_real_cv(text, filename=""):
     if name_lower.startswith(("mk", "mkf")) or "tecnoy" in name_lower:
         return True
 
-    # Bypass: nombre de fichero contiene indicadores explícitos de CV
-    cv_name_hints = ["curriculum", "-cv.", "_cv.", " cv.", "resume", "hoja-de-vida"]
-    if any(hint in name_lower for hint in cv_name_hints):
+    # Bypass: nombre de fichero contiene indicadores explícitos de CV.
+    # Normalizar separadores (-, _, espacio, paréntesis, punto) a espacio
+    # para detectar "cv" como palabra independiente: "attached-cv (1).pdf" → "cv" ✓
+    import re as _re
+    name_normalized = _re.sub(r'[^a-z0-9]', ' ', name_lower)
+    cv_word_hints = ["curriculum", "resume", "hoja de vida"]
+    if _re.search(r'\bcv\b', name_normalized) or any(h in name_normalized for h in cv_word_hints):
         print(f"    [is_real_cv] Bypass por nombre de fichero: {filename}")
         return True
 
