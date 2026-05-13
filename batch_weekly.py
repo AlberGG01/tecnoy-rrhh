@@ -27,6 +27,7 @@ from cv_pipeline import (
 SOURCE_DIR = BASE_DIR / "NUEVOS_INGRESOS"
 ACTIVOS_DIR = BASE_DIR / "TECNOY-Seleccion RRHH" / "01_ACTIVOS"
 DUPLICADOS_DIR = BASE_DIR / "DUPLICADOS"
+NO_CV_DIR = SOURCE_DIR / "NO_ES_CV"
 DB_PATH = BASE_DIR / "candidates.db"
 CHROMA_DIR = BASE_DIR / "chroma_db"
 LOG_DIR = BASE_DIR / "logs"
@@ -35,6 +36,7 @@ LOG_DIR = BASE_DIR / "logs"
 SOURCE_DIR.mkdir(parents=True, exist_ok=True)
 ACTIVOS_DIR.mkdir(parents=True, exist_ok=True)
 DUPLICADOS_DIR.mkdir(parents=True, exist_ok=True)
+NO_CV_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -151,6 +153,7 @@ def main():
             "duplicados": 0,
             "fallos_extraccion": 0
         }
+        no_cv_files = []  # nombres de archivos movidos a NO_ES_CV
         
         log_print(f"Iniciando procesamiento de {len(files_to_check)} archivos encontrados...\n")
         
@@ -180,11 +183,13 @@ def main():
                 continue
 
             if data.get("tipo_documento") == "documento_administrativo":
-                log_print(f"  [DESCARTADO] Documento administrativo detectado por IA (no es un CV).")
                 stats["administrativos_ignorados"] += 1
                 try:
-                    shutil.move(str(file_path), str(ACTIVOS_DIR / filename))
-                except: pass
+                    shutil.move(str(file_path), str(NO_CV_DIR / filename))
+                    no_cv_files.append(filename)
+                    log_print(f"  [DESCARTADO] No es un CV — movido a NUEVOS_INGRESOS/NO_ES_CV/")
+                except Exception as e:
+                    log_print(f"  [DESCARTADO] No es un CV — error al mover a NO_ES_CV: {e}")
                 continue
 
             stats["cvs_reales"] += 1
@@ -250,6 +255,13 @@ def main():
         log_print(f"Duplicados detectados (no añadidos):  {stats['duplicados']}")
         log_print(f"Fallos de extracción/indexación:      {stats['fallos_extraccion']}")
         log_print(f"==================================================\n")
+        if no_cv_files:
+            log_print(f"AVISO: {len(no_cv_files)} archivo(s) detectados como NO currículum han sido")
+            log_print(f"       movidos a la carpeta: NUEVOS_INGRESOS/NO_ES_CV/")
+            log_print(f"       Revísalos manualmente por si se han colado por error:")
+            for fn in no_cv_files:
+                log_print(f"         - {fn}")
+            log_print(f"")
 
 if __name__ == "__main__":
     main()
