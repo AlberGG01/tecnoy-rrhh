@@ -66,6 +66,11 @@ def clean_name(name):
     if not name or name.lower() == 'null': return None
     return re.sub(r'\s+', ' ', name).strip()
 
+def filename_suggests_cv(filename):
+    """True si el nombre del archivo indica claramente que es un CV (override de seguridad)."""
+    import re
+    return bool(re.search(r'\b(cv|curriculum|resume|curriculo)\b', filename.lower()))
+
 def check_duplicate(nombre, email):
     """Busca en la BD si ya existe un candidato con el mismo nombre o email.
     Devuelve (True, dict_existente) o (False, None)."""
@@ -182,15 +187,21 @@ def main():
                 stats["fallos_extraccion"] += 1
                 continue
 
+            word_count = len(extracted_text.split()) if extracted_text else 0
+            log_print(f"  [INFO] Texto extraído: {word_count} palabras")
+
             if data.get("tipo_documento") == "documento_administrativo":
-                stats["administrativos_ignorados"] += 1
-                try:
-                    shutil.move(str(file_path), str(NO_CV_DIR / filename))
-                    no_cv_files.append(filename)
-                    log_print(f"  [DESCARTADO] No es un CV — movido a NUEVOS_INGRESOS/NO_ES_CV/")
-                except Exception as e:
-                    log_print(f"  [DESCARTADO] No es un CV — error al mover a NO_ES_CV: {e}")
-                continue
+                if filename_suggests_cv(filename):
+                    log_print(f"  [OVERRIDE] IA lo clasificó como doc. administrativo pero el nombre contiene 'cv/curriculum' — procesando como CV.")
+                else:
+                    stats["administrativos_ignorados"] += 1
+                    try:
+                        shutil.move(str(file_path), str(NO_CV_DIR / filename))
+                        no_cv_files.append(filename)
+                        log_print(f"  [DESCARTADO] No es un CV — movido a NUEVOS_INGRESOS/NO_ES_CV/")
+                    except Exception as e:
+                        log_print(f"  [DESCARTADO] No es un CV — error al mover a NO_ES_CV: {e}")
+                    continue
 
             stats["cvs_reales"] += 1
 
