@@ -4,6 +4,8 @@ import json
 import shutil
 import os
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
 
@@ -159,57 +161,89 @@ def main():
             "fallos_extraccion": 0
         }
         no_cv_files = []  # nombres de archivos movidos a NO_ES_CV
-        
-        log_print(f"Iniciando procesamiento de {len(files_to_check)} archivos encontrados...\n")
-        
-        # 3. Procesar archivos
-        for file_path in files_to_check:
+
+        # Separar ya-indexados de nuevos
+        already_indexed = [fp for fp in files_to_check if fp.name in indexed_files]
+        to_process = [fp for fp in files_to_check if fp.name not in indexed_files]
+
+        # Limpiar ya-indexados rápido (sin IA)
+        for file_path in already_indexed:
             filename = file_path.name
-            
-            if filename in indexed_files:
-                stats["ya_indexados"] += 1
-                try:
-                    # Mover el archivo a la carpeta principal para limpiar NUEVOS_INGRESOS
-                    # aunque ya estuviera indexado (para no procesarlo en el futuro)
-                    trash_path = ACTIVOS_DIR / filename
-                    shutil.move(str(file_path), str(trash_path))
-                    log_print(f"[{filename}] YA INDEXADO -> Movido a 01_ACTIVOS (sin carpeta skill)")
-                except Exception as e:
-                    log_print(f"[{filename}] YA INDEXADO -> Error al limpiar la ruta: {e}")
-                continue
-                
-            log_print(f"[{filename}] Extrayendo datos con IA...")
-
+            stats["ya_indexados"] += 1
             try:
-                data, extracted_text, cost = process_single_file_with_cost(file_path)
+                shutil.move(str(file_path), str(ACTIVOS_DIR / filename))
+                log_print(f"[{filename}] YA INDEXADO -> Movido a 01_ACTIVOS")
             except Exception as e:
-                log_print(f"  [ERROR] Error critico en pipeline: {e}")
-                stats["fallos_extraccion"] += 1
-                continue
+                log_print(f"[{filename}] YA INDEXADO -> Error al limpiar: {e}")
 
-            word_count = len(extracted_text.split()) if extracted_text else 0
-            log_print(f"  [INFO] Texto extraído: {word_count} palabras")
+        if not to_process:
+            log_print("No hay archivos nuevos que procesar.")
+        else:
+            # Número de workers: tantos como núcleos, máximo 8, mínimo 1
+            max_workers = min(8, os.cpu_count() or 2, len(to_process))
+            log_print(f"Iniciando extraccion paralela de {len(to_process)} archivo(s) con {max_workers} workers...\n")
 
-            if data.get("tipo_documento") == "documento_administrativo":
-                if filename_suggests_cv(filename):
-                    log_print(f"  [OVERRIDE] IA lo clasificó como doc. administrativo pero el nombre contiene 'cv/curriculum' — procesando como CV.")
-                else:
-                    stats["administrativos_ignorados"] += 1
+            # Lock para log thread-safe durante la fase paralela
+            log_lock = threading.Lock()
+            def safe_log(msg):
+                with log_lock:
+                    log_print(msg)
+
+            # 3a. Fase paralela: extraccion (Docling + GPT) — la parte lenta
+            extraction_results = {}  # file_path -> (data, text, cost) | Exception
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_file = {
+                    executor.submit(process_single_file_with_cost, fp): fp
+                    for fp in to_process
+                }
+                for future in as_completed(future_to_file):
+                    fp = future_to_file[future]
                     try:
-                        shutil.move(str(file_path), str(NO_CV_DIR / filename))
-                        no_cv_files.append(filename)
-                        log_print(f"  [DESCARTADO] No es un CV — movido a NUEVOS_INGRESOS/NO_ES_CV/")
+                        data, text, cost = future.result()
+                        extraction_results[fp] = (data, text, cost)
+                        words = len(text.split()) if text else 0
+                        safe_log(f"[{fp.name}] Extraido: {words} palabras (costo: ${cost:.5f})")
                     except Exception as e:
-                        log_print(f"  [DESCARTADO] No es un CV — error al mover a NO_ES_CV: {e}")
+                        extraction_results[fp] = e
+                        safe_log(f"[{fp.name}] [ERROR] Error en pipeline: {e}")
+
+            log_print("")
+
+            # 3b. Fase serial: clasificar, mover archivos e insertar en BD
+            for file_path in to_process:
+                filename = file_path.name
+                result = extraction_results.get(file_path)
+
+                if isinstance(result, Exception) or result is None:
+                    log_print(f"[{filename}] [ERROR] Fallo en extraccion — se omite.")
+                    stats["fallos_extraccion"] += 1
                     continue
 
-            stats["cvs_reales"] += 1
+                data, extracted_text, cost = result
 
-            if "error" not in data:
+                if "error" in data:
+                    log_print(f"[{filename}] [ERROR] Fallo en IA: {data['error']}")
+                    stats["fallos_extraccion"] += 1
+                    continue
+
+                if data.get("tipo_documento") == "documento_administrativo":
+                    if filename_suggests_cv(filename):
+                        log_print(f"[{filename}] [OVERRIDE] IA dijo doc. administrativo pero nombre contiene 'cv/curriculum' — procesando como CV.")
+                    else:
+                        stats["administrativos_ignorados"] += 1
+                        try:
+                            shutil.move(str(file_path), str(NO_CV_DIR / filename))
+                            no_cv_files.append(filename)
+                            log_print(f"[{filename}] [DESCARTADO] No es un CV — movido a NUEVOS_INGRESOS/NO_ES_CV/")
+                        except Exception as e:
+                            log_print(f"[{filename}] [DESCARTADO] Error al mover a NO_ES_CV: {e}")
+                        continue
+
+                stats["cvs_reales"] += 1
                 extracted_name = clean_name(data.get('nombre', ''))
                 extracted_email = data.get('email', '')
 
-                # Comprobar duplicado por nombre o email antes de insertar
                 is_dup, existing = check_duplicate(extracted_name, extracted_email)
                 if is_dup:
                     stats["duplicados"] += 1
@@ -221,9 +255,8 @@ def main():
                         "existente_nombre": existing.get("nombre", ""),
                         "razon": existing.get("razon", "nombre")
                     }, ensure_ascii=False)
-                    log_print(f"  [DUPLICADO] Candidato ya existe en la BD (por {existing.get('razon')}): {existing.get('nombre')}")
+                    log_print(f"[{filename}] [DUPLICADO] Ya existe en BD (por {existing.get('razon')}): {existing.get('nombre')}")
                     log_print(f"[DUPLICADO_JSON] {dup_info}")
-                    # Mover el archivo a DUPLICADOS para revisión manual
                     try:
                         shutil.move(str(file_path), str(DUPLICADOS_DIR / filename))
                     except Exception:
@@ -234,25 +267,20 @@ def main():
                 skills = data.get('skills_tecnicas', [])
                 seniority = data.get('nivel_seniority', '')
                 folder_str = get_proposed_folder(skills, seniority)
-
                 target_folder = ACTIVOS_DIR / folder_str
                 target_folder.mkdir(parents=True, exist_ok=True)
                 target_path = target_folder / new_filename
 
-                log_print(f"  [->] Moviendo a: 01_ACTIVOS/{folder_str}/{new_filename}")
-
+                log_print(f"[{filename}] [->] Moviendo a: 01_ACTIVOS/{folder_str}/{new_filename}")
                 try:
                     shutil.move(str(file_path), str(target_path))
                     insert_into_db(data, extracted_text, DB_PATH, CHROMA_DIR, str(target_path), folder_str, new_filename)
-                    log_print(f"  [OK] Indexado y vectorizado correctamente. (Costo: ${cost:.5f})")
+                    log_print(f"[{filename}] [OK] Indexado y vectorizado. (Costo: ${cost:.5f})")
                     stats["nuevos_anadidos"] += 1
                     indexed_files.add(filename)
                 except Exception as e:
-                    log_print(f"  [ERROR] Error al mover o indexar: {e}")
+                    log_print(f"[{filename}] [ERROR] Error al mover o indexar: {e}")
                     stats["fallos_extraccion"] += 1
-            else:
-                log_print(f"  [ERROR] Fallo en IA: {data['error']}")
-                stats["fallos_extraccion"] += 1
                 
         # 4. Resumen final en log
         log_print(f"\n==================================================")

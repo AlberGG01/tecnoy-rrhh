@@ -4,6 +4,7 @@ import json
 import sqlite3
 import base64
 import time
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -20,11 +21,14 @@ except ImportError:
     _DOCLING_AVAILABLE = False
 
 _docling_converter = None
+_docling_lock = threading.Lock()
 
 def get_docling_converter():
     global _docling_converter
     if _DOCLING_AVAILABLE and _docling_converter is None:
-        _docling_converter = _DoclingConverter()
+        with _docling_lock:
+            if _docling_converter is None:  # double-checked locking
+                _docling_converter = _DoclingConverter()
     return _docling_converter
 
 # Load API Key from .env located next to this script
