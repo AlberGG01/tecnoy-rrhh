@@ -283,28 +283,43 @@ def process_single_file_with_cost(file_path: Path):
     is_vision = False
     cost = 0.0
 
-    # --- Extracción principal: Docling (Markdown estructurado) ---
-    # Captura headers con estilos, text boxes y secciones gráficas que PyMuPDF/python-docx pierden.
-    docling_text = extract_text_docling(file_path)
-    if docling_text and len(docling_text.split()) >= 30:
-        extracted_text = docling_text
-        level = 1
-    else:
-        # Fallback al método original si Docling falla o no está disponible
-        if ext == '.pdf':
-            extracted_text = extract_raw_text_pdf(file_path)
-            if not extracted_text.strip():
+    if ext == '.pdf':
+        # Ruta rápida: PyMuPDF (~0.1s). Si extrae ≥150 palabras coherentes, no necesitamos Docling.
+        fast_text = extract_raw_text_pdf(file_path)
+        if fast_text and check_coherence(fast_text) and len(fast_text.split()) >= 150:
+            extracted_text = fast_text
+            level = 1
+        elif fast_text.strip():
+            # Texto pobre o incoherente → Docling como refuerzo
+            docling_text = extract_text_docling(file_path)
+            if docling_text and len(docling_text.split()) >= 30:
+                extracted_text = docling_text
+                level = 1
+            else:
+                extracted_text = fast_text
+                level = 2
+        else:
+            # Sin texto → PDF escaneado → Vision
+            docling_text = extract_text_docling(file_path)
+            if docling_text and len(docling_text.split()) >= 30:
+                extracted_text = docling_text
+                level = 1
+            else:
                 is_vision = True
                 level = 3
-            elif not check_coherence(extracted_text):
-                level = 2
-            else:
-                level = 1
-        elif ext == '.docx':
+
+    elif ext == '.docx':
+        # DOCX: Docling primero siempre (captura cabeceras con estilos, text boxes)
+        docling_text = extract_text_docling(file_path)
+        if docling_text and len(docling_text.split()) >= 30:
+            extracted_text = docling_text
+            level = 1
+        else:
             extracted_text = docx_to_text(file_path)
             level = 1 if len(extracted_text.split()) >= 50 else 2
-        elif ext == '.doc':
-            level = 2
+
+    elif ext == '.doc':
+        level = 2
 
     try:
         # SOLO usamos Visión si es Nivel 3 (Escaneo real sin texto)
