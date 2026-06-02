@@ -71,7 +71,14 @@ def clean_name(name):
 def filename_suggests_cv(filename):
     """True si el nombre del archivo indica claramente que es un CV (override de seguridad)."""
     import re
-    return bool(re.search(r'\b(cv|curriculum|resume|curriculo)\b', filename.lower()))
+    name = filename.lower()
+    # Palabras que indican explícitamente que es un CV
+    if re.search(r'\b(cv|curriculum|resume|curriculo)\b', name):
+        return True
+    # Adobe Scan / CamScanner → documentos escaneados que el jefe mete a mano = asumir CV
+    if re.search(r'\b(adobe.?scan|camscanner|scan\b)', name):
+        return True
+    return False
 
 def check_duplicate(nombre, email):
     """Busca en la BD si ya existe un candidato con el mismo nombre o email.
@@ -278,6 +285,9 @@ def main():
                     log_print(f"[{filename}] [OK] Indexado y vectorizado. (Costo: ${cost:.5f})")
                     stats["nuevos_anadidos"] += 1
                     indexed_files.add(filename)
+                except PermissionError:
+                    log_print(f"[{filename}] [BLOQUEADO] El archivo esta abierto en Word o OneDrive lo esta sincronizando. Cierralo y vuelve a lanzar el batch.")
+                    stats["fallos_extraccion"] += 1
                 except Exception as e:
                     log_print(f"[{filename}] [ERROR] Error al mover o indexar: {e}")
                     stats["fallos_extraccion"] += 1
