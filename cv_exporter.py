@@ -386,7 +386,8 @@ def generate_corporate_cv_docx(candidate_row, parsed_data) -> io.BytesIO:
                     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
     # 6. Formación
-    formacion = parsed_data.get("formacion_academica", [])
+    formacion_raw = parsed_data.get("formacion_academica", [])
+    formacion = [str(f) if not isinstance(f, str) else f for f in formacion_raw if f]
     if formacion:
         add_section_header("Formación:")
         for f in formacion:
@@ -401,8 +402,18 @@ def generate_corporate_cv_docx(candidate_row, parsed_data) -> io.BytesIO:
             p.paragraph_format.space_after = Pt(4)
         doc.add_paragraph()
 
-    # 7. Idiomas
-    idiomas = parsed_data.get("idiomas", [])
+    # 7. Idiomas — normalizar por si GPT devuelve dicts en vez de strings
+    idiomas_raw = parsed_data.get("idiomas", [])
+    idiomas = []
+    for item in idiomas_raw:
+        if isinstance(item, dict):
+            lang = item.get("idioma") or item.get("language") or ""
+            nivel = item.get("nivel") or item.get("level") or ""
+            texto = f"{lang}: {nivel}".strip(": ").strip()
+            if texto:
+                idiomas.append(texto)
+        elif isinstance(item, str) and item.strip():
+            idiomas.append(item.strip())
     if idiomas:
         add_section_header("Idiomas:")
         add_bullet_list(idiomas)
